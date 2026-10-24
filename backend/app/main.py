@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.api.routes import router
+from backend.app.conversation import router as conversation_router
 from backend.app.config import Settings, get_settings
 from backend.app.context.processor import ContextProcessor
 from backend.app.memory.retrieval import MemoryRetriever
@@ -52,6 +53,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["Content-Type", "Authorization"],
     )
     app.include_router(router)
+    app.include_router(conversation_router)
     return app
 
 

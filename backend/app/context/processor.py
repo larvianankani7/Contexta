@@ -44,8 +44,12 @@ class ContextProcessor:
         text: str,
         source: str | None,
         metadata: dict[str, str | int | float | bool | None],
+        extract: bool = True,
     ) -> dict[str, object]:
-        facts, extraction_method = await self._extract(text)
+        if extract:
+            facts, extraction_method = await self._extract(text)
+        else:
+            facts, extraction_method = [Fact(text=text[:2_000], category="other")], "source_text"
         memory_id = str(uuid.uuid4())
         created_at = datetime.now(UTC).isoformat()
         artifact_metadata: dict[str, object] = {

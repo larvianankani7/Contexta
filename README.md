@@ -404,3 +404,7 @@ Contexta is built around one principle:
 ## Status
 
 Hackathon MVP — Reasoning Architecture Track.
+
+## Conversational CLI with automatic memory
+
+`uv run contexta run qwen3-vl:4b --trace` now uses `/conversation`: ordinary multi-turn Ollama chat for general questions, automatic persistence of explicit `remember`/`save`/`lock` decisions, and source-backed exact recall for saved private facts. Normal answers are not memory-verified. Source-backed answers are verbatim stored data, not externally established truth. Existing `/chat` retains the earlier strict evidence-checking route for compatibility. Scheduled reminders are not implemented. Do not store passwords or other secrets in unencrypted local memory.

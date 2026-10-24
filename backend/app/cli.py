@@ -165,6 +165,7 @@ async def run_chat(
     if not health["ollama"]:
         print(f"Ollama model {settings.ollama_model!r} is unavailable.", file=sys.stderr)
         return 1
+    history: list[dict[str, str]] = []
     while True:
         try:
             query = input("\nYou > ").strip()
@@ -177,7 +178,7 @@ async def run_chat(
         if not query:
             continue
         try:
-            response = await client.post("/chat", json={"query": query})
+            response = await client.post("/conversation", json={"query": query, "history": history[-20:]})
         except httpx.HTTPError as error:
             print(f"Chat request failed: {error}", file=sys.stderr)
             continue
@@ -185,16 +186,18 @@ async def run_chat(
             print(f"Chat unavailable ({response.status_code}): {response.text}", file=sys.stderr)
             continue
         result = response.json()
+        history.extend([{"role": "user", "content": query}, {"role": "assistant", "content": result["answer"][:5_000]}])
         print(f"\nContexta > {result['answer']}")
         verification = {
-            "verified": "PASS",
-            "unverified": "NOT PERFORMED (no relevant memory)",
+            "verified": "SOURCE-BACKED (exact saved text)",
+            "unverified": "NOT MEMORY-VERIFIED",
             "insufficient_evidence": "INSUFFICIENT EVIDENCE",
         }[result["status"]]
         print(f"Verification: {verification}")
         if result["evidence"]:
             print("Evidence: " + ", ".join(item["memory_id"] for item in result["evidence"]))
-        print(f"Recovery attempts: {result['retry_count']}")
+        if result.get("saved_memory_id"):
+            print(f"Saved memory: {result['saved_memory_id']}")
         if trace:
             await show_trace(client)
 
@@ -328,7 +331,7 @@ async def benchmark(client: httpx.AsyncClient, settings: Settings) -> int:
         if controlled_answer is None or not controlled_answer.strip():
             print("Controlled Ollama request returned no answer text.", file=sys.stderr)
             return 1
-        enhanced_response = await client.post("/chat", json={"query": item["question"]})
+        enhanced_response = await client.post("/conversation", json={"query": item["question"]})
         if enhanced_response.is_error:
             print(f"Contexta benchmark request failed ({enhanced_response.status_code}).", file=sys.stderr)
             return 1

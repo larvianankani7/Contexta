@@ -40,7 +40,7 @@ class MemoryRetriever:
         ranked = []
         for memory in candidates:
             facts = memory["facts"]
-            content = " ".join(str(f["text"]) for f in facts) if facts else str(memory["content"])
+            content = str(memory["content"]) if memory["metadata"].get("kind") == "explicit_memory" else (" ".join(str(f["text"]) for f in facts) if facts else str(memory["content"]))
             content_tokens = meaningful_tokens(content)
             content_projects = {p.casefold() for p in PROJECT_RE.findall(content)}
             if projects and not projects.issubset(content_projects):

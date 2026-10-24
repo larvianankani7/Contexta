@@ -14,3 +14,7 @@ backend/data/context.db*
 backend/data/artifacts/*
 !backend/data/artifacts/.gitkeep
 backend/data/benchmarks/*.json
+
+contexta.egg-info/
+mcp/.tsupgrader/
+.contexta-before-conversation/

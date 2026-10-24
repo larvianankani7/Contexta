@@ -1,5 +1,0 @@
-fastapi[standard]
-httpx
-ollama
-pillow
-pydantic-settings
