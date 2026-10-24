@@ -1,3 +1,4 @@
+
 import logging
 import re
 import sqlite3
@@ -13,34 +14,59 @@ from backend.app.schemas import ChatResponse, ClaimVerification, Evidence
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
 SAVE_RE = re.compile(
-    r"\b(?:remember\s+(?:that|this|the\s+following)|save\s+(?:this|that|these|the\s+following)|"
-    r"lock\s+(?:this|it|these|the\s+following)|note\s+(?:that|this)|keep\s+in\s+mind|"
-    r"(?:decisions|settings|requirements|tech\s+stack)\s+are\s+locked|"
-    r"(?:we|i)\s+(?:have\s+)?(?:decided|chosen)\s+to|remind\s+me\s+later)\b",
+    r"\b(?:remember\s+(?:that|this)|save\s+(?:it|this|that|these)|"
+    r"lock\s+(?:it|this|that|these)|note\s+(?:that|this)|keep\s+in\s+mind|"
+    r"(?:decisions?|settings|requirements|tech\s+stack)\s+are\s+locked|"
+    r"remind\s+me\s+later)\b",
     re.I,
 )
 RECALL_RE = re.compile(
-    r"\b(?:what|which|when|where|who|tell me|show me|list|retrieve|recall|remind me|do you remember)\b"
-    r".{0,180}\b(?:we|our|my|earlier|previous|before|last\s+time|beginning|stored|saved|locked|discussed|decided|chose)\b"
-    r"|\b(?:our|my)\s+(?:project|database|decisions?|settings|tech\s+stack|preferences?)\b"
-    r"|\b(?:earlier|previously|last\s+time|at\s+the\s+beginning)\b",
+    r"\b(?:remember|recall|retrieve|saved|stored|locked|earlier|previously|"
+    r"before|last\s+time|beginning|"
+    r"(?:we\s+(?:decided|chose|picked|selected)|did\s+we\s+(?:choose|decide|pick|select))|"
+    r"our\s+(?:decision|choice|project|settings|architecture|tech\s+stack))\b",
+    re.I,
+)
+QUESTION_RE = re.compile(
+    r"^\s*(?:what|which|where|when|who|do\s+you|can\s+you|could\s+you|"
+    r"tell\s+me|show\s+me|list|retrieve|recall|remind\s+me)\b",
     re.I,
 )
 PROJECT_RE = re.compile(r"\b[A-Z][A-Z0-9]*(?:[-_][A-Z0-9]+)+\b")
-NAMED_PROJECT_RE = re.compile(r"\b[Pp]roject\s+(?:named\s+|codename\s*:\s*)?([A-Z][A-Za-z0-9_-]*)\b")
-FIELD_RE = {
-    "database": re.compile(r"\b(?:database|db)\b", re.I),
-    "password hashing": re.compile(r"\b(?:password.hash|hashing)\b", re.I),
-    "cache": re.compile(r"\b(?:cache|caching|ttl)\b", re.I),
-    "access token expiration": re.compile(r"\baccess\s+token\b", re.I),
-    "refresh token expiration": re.compile(r"\brefresh\s+token\b", re.I),
-    "api rate limit": re.compile(r"\b(?:rate\s+limit|requests\s+per)\b", re.I),
-    "internal service port": re.compile(r"\b(?:internal\s+port|service\s+port|port\s+number)\b", re.I),
-    "deployment region": re.compile(r"\b(?:deployment\s+region|region)\b", re.I),
-    "project codename": re.compile(r"\b(?:codename|project\s+name)\b", re.I),
+NAMED_RE = re.compile(
+    r"\bproject\s+(?:named\s+|codename\s*:\s*)?([A-Z][A-Za-z0-9_-]*)\b"
+)
+
+LABELS = {
+    "project codename": r"project\s+codename",
+    "database": r"database",
+    "password hashing": r"password\s+hashing",
+    "cache": r"cache",
+    "access token expiration": r"access\s+token\s+expiration",
+    "refresh token expiration": r"refresh\s+token\s+expiration",
+    "api rate limit": r"(?:api\s+)?rate\s+limit",
+    "internal service port": r"(?:internal\s+)?service\s+port|internal\s+port",
+    "deployment region": r"deployment\s+region",
 }
-ANALYSIS_RE = re.compile(r"\b(?:why|how|compare|difference|recommend|explain|design|advantages|disadvantages)\b", re.I)
+LABEL_RE = re.compile(
+    r"(?<!\w)("
+    + "|".join(f"(?:{value})" for value in LABELS.values())
+    + r")\s*:\s*",
+    re.I,
+)
+FIELD_CUES = {
+    "project codename": r"\b(?:codename|project\s+name)\b",
+    "database": r"\b(?:database|db)\b",
+    "password hashing": r"\b(?:hashing|hash\s+algorithm)\b",
+    "cache": r"\b(?:cache|redis|ttl)\b",
+    "access token expiration": r"\baccess\s+token\b",
+    "refresh token expiration": r"\brefresh\s+token\b",
+    "api rate limit": r"\b(?:rate\s+limit|requests\s+per)\b",
+    "internal service port": r"\b(?:port|listening\s+port)\b",
+    "deployment region": r"\b(?:region|deploy(?:ment)?)\b",
+}
 
 
 class Turn(BaseModel):
@@ -57,139 +83,343 @@ class ConversationResponse(ChatResponse):
     saved_memory_id: str | None = None
 
 
-def _needs_memory(query: str) -> bool:
-    return bool(RECALL_RE.search(query) or PROJECT_RE.search(query) or NAMED_PROJECT_RE.search(query))
+def _identifiers(text: str) -> set[str]:
+    return (
+        {value.casefold() for value in PROJECT_RE.findall(text)}
+        | {value.casefold() for value in NAMED_RE.findall(text)}
+    )
 
 
 def _is_save(query: str) -> bool:
-    if query.strip().endswith("?") and RECALL_RE.search(query):
+    return bool(SAVE_RE.search(query)) and not (
+        QUESTION_RE.search(query) and RECALL_RE.search(query)
+    )
+
+
+def _needs_memory(query: str) -> bool:
+    if not (QUESTION_RE.search(query) or query.rstrip().endswith("?")):
         return False
-    return bool(SAVE_RE.search(query))
+    return bool(
+        RECALL_RE.search(query)
+        or (
+            _identifiers(query)
+            and any(re.search(cue, query, re.I) for cue in FIELD_CUES.values())
+        )
+    )
+
+
+def _fields(text: str) -> dict[str, str]:
+    matches = list(LABEL_RE.finditer(text))
+    fields: dict[str, str] = {}
+    for index, match in enumerate(matches):
+        label = next(
+            (
+                name
+                for name, pattern in LABELS.items()
+                if re.fullmatch(pattern, match.group(1), re.I)
+            ),
+            None,
+        )
+        if not label:
+            continue
+        end = (
+            matches[index + 1].start()
+            if index + 1 < len(matches)
+            else len(text)
+        )
+        value = text[match.end():end].strip().strip(". ;\n\t")
+        value = re.split(
+            r"\b(?:These values are intentional|Preserve them exactly|"
+            r"Acknowledge the decisions|We'll now discuss|Do not bring up)\b",
+            value,
+            maxsplit=1,
+            flags=re.I,
+        )[0].strip().strip(". ;\n\t")
+        if value and len(value) < 500:
+            fields[label] = value
+    return fields
 
 
 def _save_text(query: str, history: list[Turn]) -> str:
-    if re.fullmatch(r"(?i)\s*(?:lock|save|remember)\s+(?:it|this|that)[.!]?\s*", query):
-        return next((turn.content for turn in reversed(history) if turn.content.strip()), query)
+    if re.fullmatch(
+        r"\s*(?:lock|save|remember)\s+(?:it|this|that)[.!]?\s*",
+        query,
+        re.I,
+    ):
+        return next(
+            (item.content for item in reversed(history) if item.role == "user"),
+            query,
+        )
     return query
 
 
-def _project_fallback(request: Request, query: str, history: list[Turn]) -> list[Evidence]:
-    tokens = set(PROJECT_RE.findall(query)) | set(NAMED_PROJECT_RE.findall(query))
-    if not tokens:
-        for turn in reversed(history):
-            tokens = set(PROJECT_RE.findall(turn.content)) | set(NAMED_PROJECT_RE.findall(turn.content))
-            if tokens:
-                break
+def _compact(text: str) -> str:
+    fields = _fields(text)
+    if fields:
+        return "\n".join(
+            f"{name.title()}: {value}" for name, value in fields.items()
+        )
+    return re.sub(
+        r"^\s*(?:remember\s+that|save\s+(?:this|that)\s*:?|"
+        r"lock\s+(?:this|these)\s*:?|note\s+that)\s*",
+        "",
+        text,
+        flags=re.I,
+    ).strip()[:5_000]
+
+
+def _records(
+    request: Request,
+    query: str,
+    history: list[Turn],
+) -> list[Evidence]:
     database = request.app.state.database
-    records, _ = database.list(limit=50, offset=0)
-    if not tokens:
-        identities = {match for r in records for match in PROJECT_RE.findall(r["content"])} | {match for r in records for match in NAMED_PROJECT_RE.findall(r["content"])}
-        if len(identities) != 1:
-            return []
-        tokens = identities
-    if len(tokens) != 1:
+    records, _ = database.list(limit=100, offset=0)
+    if not records:
         return []
-    identifier = next(iter(tokens)).casefold()
-    matching = [r for r in records if identifier in r["content"].casefold()]
-    matching.sort(key=lambda r: (len(r["content"]), r["created_at"]), reverse=True)
-    return [Evidence(memory_id=str(r["id"]), text=str(r["content"]), source=r["source"], relevance=1.0) for r in matching[:3]]
+
+    identifiers = _identifiers(query)
+    if not identifiers:
+        for turn in reversed(history):
+            identifiers = _identifiers(turn.content)
+            if identifiers:
+                break
+
+    if not identifiers:
+        known = set().union(
+            *(_identifiers(record["content"]) for record in records)
+        )
+        if len(known) != 1:
+            return []
+        identifiers = known
+
+    if len(identifiers) != 1:
+        return []
+
+    name = next(iter(identifiers))
+    matches = [
+        record
+        for record in records
+        if name in _identifiers(record["content"])
+    ]
+    matches.sort(
+        key=lambda record: (
+            len(_fields(record["content"])),
+            record["created_at"],
+        ),
+        reverse=True,
+    )
+    return [
+        Evidence(
+            memory_id=str(record["id"]),
+            text=str(record["content"]),
+            source=record["source"],
+            relevance=1.0,
+        )
+        for record in matches[:8]
+    ]
 
 
-def _source_answer(query: str, evidence: list[Evidence]) -> tuple[str, list[Evidence], bool]:
-    unique: list[Evidence] = []
-    seen: set[str] = set()
+def _recall(
+    query: str,
+    evidence: list[Evidence],
+) -> tuple[str, list[str], bool]:
+    requested = [
+        name
+        for name, cue in FIELD_CUES.items()
+        if re.search(cue, query, re.I)
+    ]
+    broad = bool(
+        re.search(
+            r"\b(?:all|every|complete|entire|full|"
+            r"architecture\s+decisions|locked\s+decisions)\b",
+            query,
+            re.I,
+        )
+    ) or len(requested) >= 3
+
+    values: dict[str, set[str]] = {}
+    citations: dict[str, list[str]] = {}
     for item in evidence:
-        key = item.text.strip().casefold()
-        if key not in seen:
-            seen.add(key)
-            unique.append(item)
-    primary = unique[0]
-    fields = [key for key, pattern in FIELD_RE.items() if pattern.search(query)]
-    broad = len(fields) >= 3 or re.search(r"\b(?:all|entire|complete|every|full|architecture\s+decisions)\b", query, re.I)
-    if fields and not broad:
-        labels = tuple(field.casefold() for field in fields)
-        lines = [line.strip() for line in primary.text.splitlines() if line.strip() and ":" in line and line.split(":", 1)[0].strip().casefold() in labels]
-        if lines:
-            conflicts = False
-            for field in fields:
-                values = {
-                    line.split(":", 1)[1].strip().casefold()
-                    for item in unique
-                    for line in item.text.splitlines()
-                    if ":" in line and line.split(":", 1)[0].strip().casefold() == field
-                }
-                conflicts |= len(values) > 1
-            if conflicts:
-                return "Conflicting saved values exist for this decision. Review the cited memories.", evidence, False
-            return "\n".join(lines), evidence, True
-    if len(unique) > 1 and any(item.text != primary.text and len(item.text) >= len(primary.text) * 0.8 for item in unique[1:]):
-        return "Multiple different memories may apply. Please specify which decision to use.", evidence, False
-    return primary.text[:5_000], evidence, True
+        for key, value in _fields(item.text).items():
+            values.setdefault(key, set()).add(value)
+            citations.setdefault(key, []).append(item.memory_id)
+
+    if not values:
+        return evidence[0].text.strip(), [evidence[0].memory_id], True
+
+    targets = list(values) if broad or not requested else requested
+    found = [key for key in targets if key in values]
+
+    if not found:
+        return (
+            "I found saved information for this project, "
+            "but not that specific decision.",
+            [],
+            False,
+        )
+
+    if any(len(values[key]) > 1 for key in found):
+        return (
+            "Conflicting saved decisions exist. "
+            "Please review the source memories.",
+            [],
+            False,
+        )
+
+    lines = [
+        f"{key.title()}: {next(iter(values[key]))}"
+        for key in found
+    ]
+    missing = [key for key in targets if key not in values]
+    if missing:
+        lines.append("Not stored: " + ", ".join(missing))
+
+    used = list(
+        dict.fromkeys(
+            memory_id
+            for key in found
+            for memory_id in citations[key]
+        )
+    )
+    return "\n".join(lines), used, not missing
 
 
 @router.post("/conversation", response_model=ConversationResponse)
-async def converse(payload: ConversationRequest, request: Request) -> ConversationResponse:
+async def converse(
+    payload: ConversationRequest,
+    request: Request,
+) -> ConversationResponse:
     start = time.perf_counter()
     query = payload.query.strip()
     if not query:
         raise HTTPException(status_code=422, detail="Question is empty")
+
     evidence: list[Evidence] = []
     checks: list[ClaimVerification] = []
     saved_id = None
-    retrieval_ms = 0.0
-    inference_ms = 0.0
+    retrieval_ms = inference_ms = 0.0
     prompt_tokens = completion_tokens = None
+
     if _is_save(query):
-        memory_text = _save_text(query, payload.history)
+        text = _compact(_save_text(query, payload.history))
+        if not text:
+            raise HTTPException(status_code=422, detail="No decision to save")
         try:
             with request.app.state.database.connection() as connection:
-                previous = connection.execute("SELECT id FROM memories WHERE content = ? LIMIT 1", (memory_text,)).fetchone()
+                previous = connection.execute(
+                    "SELECT id FROM memories WHERE content = ? LIMIT 1",
+                    (text,),
+                ).fetchone()
             if previous:
                 saved_id = str(previous["id"])
             else:
-                record = await request.app.state.processor.ingest(text=memory_text, source="chat:auto", metadata={"kind": "explicit_memory"}, extract=False)
-                saved_id = str(record["id"])
+                stored = await request.app.state.processor.ingest(
+                    text=text,
+                    source="chat:auto",
+                    metadata={"kind": "explicit_memory"},
+                    extract=False,
+                )
+                saved_id = str(stored["id"])
         except (sqlite3.Error, OSError, ValueError) as error:
-            logger.exception("Automatic memory save failed")
-            raise HTTPException(status_code=500, detail="Memory could not be saved") from error
-        answer = "Saved to Contexta memory." + (" This is stored as a note, not a scheduled reminder." if re.search(r"remind\s+me\s+later", query, re.I) else "")
+            logger.exception("Automatic save failed")
+            raise HTTPException(
+                status_code=500,
+                detail="Memory could not be saved",
+            ) from error
+
+        answer = "Saved the decision to Contexta memory."
+        if "remind me later" in query.casefold():
+            answer += " This is not a scheduled reminder."
         status = "unverified"
+
     elif _needs_memory(query):
+        retrieval_start = time.perf_counter()
         try:
-            t = time.perf_counter()
-            evidence = request.app.state.retriever.retrieve(query, limit=5)
-            if not evidence:
-                evidence = _project_fallback(request, query, payload.history)
-            retrieval_ms = (time.perf_counter() - t) * 1_000
+            evidence = _records(request, query, payload.history)
         except sqlite3.Error as error:
-            logger.exception("Memory retrieval failed")
-            raise HTTPException(status_code=500, detail="Memory could not be retrieved") from error
+            raise HTTPException(
+                status_code=500,
+                detail="Memory retrieval failed",
+            ) from error
+
+        retrieval_ms = (
+            time.perf_counter() - retrieval_start
+        ) * 1000
+
         if not evidence:
-            answer = "I couldn't find matching saved information. Please specify the project or decision."
+            answer = (
+                "I couldn't identify a matching saved decision. "
+                "Please specify the project."
+            )
             status = "insufficient_evidence"
-        elif ANALYSIS_RE.search(query):
-            t = time.perf_counter()
-            try:
-                result = await request.app.state.reasoning.answer_general(query, history=[turn.model_dump() for turn in payload.history], memory=evidence)
-            except ReasoningUnavailable as error:
-                raise HTTPException(status_code=503, detail="Ollama is unavailable") from error
-            inference_ms = (time.perf_counter() - t) * 1_000
-            prompt_tokens, completion_tokens = result._prompt_tokens, result._completion_tokens
-            answer, status = result.answer, "unverified"
         else:
-            answer, evidence, confirmed = _source_answer(query, evidence)
-            status = "verified" if confirmed else "insufficient_evidence"
-            if confirmed:
-                checks = [ClaimVerification(claim=answer, supported=True, evidence_ids=[evidence[0].memory_id], reason="Verbatim excerpt from stored source; no generated claim.")]
+            answer, ids, complete = _recall(query, evidence)
+            evidence = [
+                item for item in evidence
+                if item.memory_id in ids
+            ]
+            status = (
+                "verified" if complete else "insufficient_evidence"
+            )
+            if complete:
+                checks = [
+                    ClaimVerification(
+                        claim=answer,
+                        supported=True,
+                        evidence_ids=ids,
+                        reason=(
+                            "Answer assembled from exact stored fields; "
+                            "no model generation."
+                        ),
+                    )
+                ]
+
     else:
-        t = time.perf_counter()
+        inference_start = time.perf_counter()
         try:
-            result = await request.app.state.reasoning.answer_general(query, history=[turn.model_dump() for turn in payload.history])
+            result = await request.app.state.reasoning.answer_general(
+                query,
+                history=[
+                    turn.model_dump()
+                    for turn in payload.history
+                ],
+            )
         except ReasoningUnavailable as error:
-            raise HTTPException(status_code=503, detail="Ollama is unavailable") from error
-        inference_ms = (time.perf_counter() - t) * 1_000
-        prompt_tokens, completion_tokens = result._prompt_tokens, result._completion_tokens
-        answer, status = result.answer, "unverified"
-    response = ConversationResponse(answer=answer, status=status, verified=status == "verified", retry_count=0, claims=checks, evidence=evidence, saved_memory_id=saved_id)
-    _save_trace(request, query=query, evidence=evidence, checks=checks, retry_count=0, status=status, retrieval_ms=retrieval_ms, inference_ms=inference_ms, total_ms=(time.perf_counter() - start) * 1_000, prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
+            raise HTTPException(
+                status_code=503,
+                detail="Ollama unavailable or invalid response",
+            ) from error
+
+        inference_ms = (
+            time.perf_counter() - inference_start
+        ) * 1000
+        prompt_tokens = result._prompt_tokens
+        completion_tokens = result._completion_tokens
+        answer = result.answer
+        status = "unverified"
+
+    response = ConversationResponse(
+        answer=answer,
+        status=status,
+        verified=status == "verified",
+        retry_count=0,
+        claims=checks,
+        evidence=evidence,
+        saved_memory_id=saved_id,
+    )
+
+    _save_trace(
+        request,
+        query=query,
+        evidence=evidence,
+        checks=checks,
+        retry_count=0,
+        status=status,
+        retrieval_ms=retrieval_ms,
+        inference_ms=inference_ms,
+        total_ms=(time.perf_counter() - start) * 1000,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+    )
     return response
