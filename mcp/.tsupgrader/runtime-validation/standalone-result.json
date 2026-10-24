@@ -1,0 +1,97 @@
+{
+  "planHash": "6ef92d5d989d7de8003ad878d60b2b8d2f01aa905eb440c3d3771b9ae51c8c34",
+  "phase": "standalone",
+  "recordedAtUtc": "2026-10-24T09:02:55.1889675Z",
+  "retryCount": 2,
+  "resetBaseline": false,
+  "complete": true,
+  "result": {
+    "setupSucceeded": true,
+    "setupDurationMs": 0,
+    "setupFailureOutput": null,
+    "assertions": [
+      {
+        "name": "mcp-typecheck",
+        "kind": "process",
+        "verificationMethod": "exit-code",
+        "passed": true,
+        "timedOut": false,
+        "skipped": false,
+        "skippedReason": null,
+        "exitCode": 0,
+        "outputSample": "\r\n\u003E mcp@1.0.0 typecheck\r\n\u003E tsc --noEmit\r\n\r\n",
+        "durationMs": 400
+      },
+      {
+        "name": "mcp-production-build",
+        "kind": "process",
+        "verificationMethod": "exit-code",
+        "passed": true,
+        "timedOut": false,
+        "skipped": false,
+        "skippedReason": null,
+        "exitCode": 0,
+        "outputSample": "\r\n\u003E mcp@1.0.0 build\r\n\u003E tsc\r\n\r\n",
+        "durationMs": 407
+      },
+      {
+        "name": "tests-pass",
+        "kind": "process",
+        "verificationMethod": "test-results",
+        "passed": true,
+        "timedOut": false,
+        "skipped": false,
+        "skippedReason": null,
+        "exitCode": 0,
+        "outputSample": "\r\n\u003E mcp@1.0.0 test\r\n\u003E tsx --test test/*.test.ts\r\n\r\n\u2714 MCP initializes and advertises the four Contexta tools (21.514ms)\r\n\u2714 store_context forwards the validated input to the backend (20.3734ms)\r\n\u2714 retrieve_context returns ranked backend evidence (5.5738ms)\r\n\u25B6 backend errors are returned as MCP tool errors\r\n  \u2714 tool input validation rejects empty context (3.2366ms)\r\n  \u2714 inject_context bounds selected memory output (4.3719ms)\r\n  \u2714 inject_context does not report exact-limit text as truncated (5.3519ms)\r\n  \u2714 stdio process starts with protocol-only stdout and serves tool discovery (456.6218ms)\r\n\u2714 backend errors are returned as MCP tool errors (474.3378ms)\r\n\u2139 tests 8\r\n\u2139 suites 0\r\n\u2139 pass 8\r\n\u2139 fail 0\r\n\u2139 cancelled 0\r\n\u2139 skipped 0\r\n\u2139 todo 0\r\n\u2139 duration_ms 955.3832\r\n",
+        "durationMs": 1348,
+        "testResults": {
+          "testFramework": "unknown",
+          "runnerDetectedFrom": "none",
+          "testsTotal": 0,
+          "testsPassed": 0,
+          "testsFailed": 0,
+          "testsSkipped": 0,
+          "parseFailed": true
+        }
+      }
+    ],
+    "executions": [
+      {
+        "source": "mcp-typecheck",
+        "resolvedExecutable": "C:\\Program Files\\nodejs\\npm.CMD",
+        "args": [
+          "run",
+          "typecheck"
+        ],
+        "cwd": "C:\\L\\CS ENGINEERING\\My_Projects\\Contexta\\mcp",
+        "env": {},
+        "prependPath": [],
+        "platform": "win32"
+      },
+      {
+        "source": "mcp-production-build",
+        "resolvedExecutable": "C:\\Program Files\\nodejs\\npm.CMD",
+        "args": [
+          "run",
+          "build"
+        ],
+        "cwd": "C:\\L\\CS ENGINEERING\\My_Projects\\Contexta\\mcp",
+        "env": {},
+        "prependPath": [],
+        "platform": "win32"
+      },
+      {
+        "source": "tests-pass",
+        "resolvedExecutable": "C:\\Program Files\\nodejs\\npm.CMD",
+        "args": [
+          "test"
+        ],
+        "cwd": "C:\\L\\CS ENGINEERING\\My_Projects\\Contexta\\mcp",
+        "env": {},
+        "prependPath": [],
+        "platform": "win32"
+      }
+    ]
+  }
+}

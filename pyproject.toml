@@ -1,0 +1,25 @@
+[project]
+name = "contexta"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi[standard]",
+    "httpx",
+    "ollama",
+    "pillow",
+    "pydantic-settings",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[dependency-groups]
+dev = ["pytest"]
+
+[project.scripts]
+contexta = "backend.app.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["backend*"]
+namespaces = false

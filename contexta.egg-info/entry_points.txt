@@ -1,0 +1,2 @@
+[console_scripts]
+contexta = backend.app.cli:main

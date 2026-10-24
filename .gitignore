@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.py[cod]
+.env
+node_modules/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.log
+backend/data/context.db*
+backend/data/artifacts/*
+!backend/data/artifacts/.gitkeep
+backend/data/benchmarks/*.json

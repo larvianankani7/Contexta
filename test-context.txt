@@ -1,0 +1,1 @@
+﻿Project AETHER-47 uses MariaDB 11.4 as its database.
