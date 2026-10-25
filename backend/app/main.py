@@ -1,9 +1,13 @@
+
 from contextlib import asynccontextmanager
 from collections.abc import AsyncGenerator
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 from backend.app.api.routes import router
 from backend.app.conversation import router as conversation_router
+from backend.app.memory_bridge import router as memory_bridge_router
 from backend.app.streaming import router as streaming_router
 from backend.app.config import Settings, get_settings
 from backend.app.context.processor import ContextProcessor
@@ -35,8 +39,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(
         title="Contexta API",
-        description="Grounded context memory and evidence-verified reasoning.",
-        version="0.1.0",
+        description="Persistent memory and evidence-backed AI context.",
+        version="0.2.0",
         lifespan=lifespan,
     )
 
@@ -58,6 +62,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(router)
     app.include_router(conversation_router)
     app.include_router(streaming_router)
+    app.include_router(memory_bridge_router)
 
     return app
 

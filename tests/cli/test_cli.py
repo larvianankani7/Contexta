@@ -16,8 +16,9 @@ def test_help_lists_supported_commands(capsys: pytest.CaptureFixture[str]) -> No
         cli.main(["--help"])
     assert error.value.code == 0
     output = capsys.readouterr().out
-    for command in ("run", "ingest", "memory", "retrieve", "trace", "benchmark"):
+    for command in ("run", "ingest", "memory", "retrieve", "trace"):
         assert command in output
+    assert "benchmark" not in output
 
 
 def test_cli_ingests_utf8_file_with_memory_and_artifacts(
