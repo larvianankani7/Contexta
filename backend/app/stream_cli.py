@@ -55,9 +55,11 @@ async def chat(url: str, trace: bool) -> None:
                         if kind == "token":
                             if first_token is None:
                                 first_token = time.perf_counter()
+
                             if not printed:
                                 print("\nContexta > ", end="", flush=True)
                                 printed = True
+
                             print(
                                 event["text"],
                                 end="",
@@ -105,6 +107,7 @@ async def chat(url: str, trace: bool) -> None:
                 "unverified": "NOT MEMORY-VERIFIED",
                 "insufficient_evidence": "INSUFFICIENT EVIDENCE",
             }
+
             status = verification.get(data["status"]) or data["status"]
             print(f"Verification: {status}")
 
@@ -126,6 +129,49 @@ async def chat(url: str, trace: bool) -> None:
 
             if not trace:
                 continue
+
+            print("\nPerformance:")
+
+            if first_token is not None:
+                print(
+                    "Client first token: "
+                    f"{(first_token - started) * 1000:.3f} ms"
+                )
+
+            if result.get("ttft_ms") is not None:
+                print(f"Server TTFT: {result['ttft_ms']} ms")
+
+            print(f"Cache hit: {result.get('cache_hit', False)}")
+
+            print(
+                "Generation after first token: "
+                f"{result.get('generation_ms', 0)} ms"
+            )
+
+            print(
+                f"Inference: {result.get('inference_ms', 0)} ms"
+            )
+
+            print(
+                "Client total: "
+                f"{(finished - started) * 1000:.3f} ms"
+            )
+
+            print(f"Server total: {result.get('total_ms', 0)} ms")
+
+            for key, label in (
+                ("ollama_total_ms", "Ollama total"),
+                ("prompt_eval_ms", "Ollama prompt processing"),
+                ("eval_ms", "Ollama generation"),
+                ("prompt_tokens", "Prompt tokens"),
+                ("completion_tokens", "Completion tokens"),
+            ):
+                value = result.get(key)
+
+                if value is not None:
+                    unit = "" if "tokens" in key else " ms"
+                    print(f"{label}: {value}{unit}")
+
 
 def main() -> None:
     parser = argparse.ArgumentParser()
